@@ -9,7 +9,12 @@ from datetime import datetime
 class InfluxDBStreamer():
   __version__ = "0.1"
   def __init__(self, baseurl, database):
-    self.baseurl = baseurl
+    if baseurl.startswith("udp://"):
+      self.baseurl = lstrip("udp://")
+      self.send = self.send_udp
+    else:
+      self.baseurl = baseurl
+      self.send = self.send_http
     self.database = database
     self.logctl = logging.getLogger("influxdb_streamer")
     self.db_is_created = False
@@ -31,6 +36,20 @@ class InfluxDBStreamer():
       self.db_is_created = False
     return self.db_is_created
 
+  def send_http(self, line):
+    try:
+      r = requests.post(self.baseurl+"/write",
+                        headers=self._headers_write,
+                        params={ "db": self.database },
+                        data=line.encode("utf-8"))
+      self.logctl.debug("Sending data returned %d" % r.status_code)
+      r.raise_for_status()
+      return True
+    except requests.exceptions.RequestException as e:
+      self.logctl.error("Error sending data: %s" % e)
+      self.db_is_created = False
+      return False
+
   def __call__(self, series, tags, fields):
     if not self.db_is_created:
       if not self.create_db():
@@ -42,16 +61,4 @@ class InfluxDBStreamer():
                   ",".join(["%s=%s" % (x,fields[x]) for x in fields]) + " " + \
                   str(int((datetime.utcnow()-datetime.utcfromtimestamp(0)).total_seconds()*1000000000))
     self.logctl.debug("Sending line to database %s: %s" % (self.database, data_string))
-
-    try:
-      r = requests.post(self.baseurl+"/write",
-                        headers=self._headers_write,
-                        params={ "db": self.database },
-                        data=data_string.encode("utf-8"))
-      self.logctl.debug("Sending data returned %d" % r.status_code)
-      r.raise_for_status()
-      return True
-    except requests.exceptions.RequestException as e:
-      self.logctl.error("Error sending data: %s" % e)
-      self.db_is_created = False
-      return False
+    return self.send(data_string)
