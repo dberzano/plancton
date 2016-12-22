@@ -209,8 +209,8 @@ class Plancton(Daemon):
     if not isinstance(self.conf["docker_cmd"], list):
       self.conf["docker_cmd"] = self.conf["docker_cmd"].split(" ")
     if self.conf["influxdb_url"] and not "#" in self.conf["influxdb_url"]:
-      # Invalid InfluxDB URL: disable monitoring
-      self.conf["influxdb_url"] = None
+      # Default database if not specified
+      self.conf["influxdb_url"] = self.conf["influxdb_url"] + "#default"
     self.logctl.debug("Configuration:\n%s" % json.dumps(self.conf, indent=2))
 
   # Set up monitoring target.

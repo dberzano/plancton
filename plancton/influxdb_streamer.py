@@ -9,19 +9,25 @@ from datetime import datetime
 class InfluxDBStreamer():
   __version__ = "0.1"
   def __init__(self, baseurl, database):
+    self.baseurl = baseurl
     if baseurl.startswith("udp://"):
-      self.baseurl = lstrip("udp://")
+      baseurl = baseurl.lstrip("udp://")
+      if ":" in baseurl:
+        self.udp_host,self.udp_port = baseurl.split(":", 1)
+      self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+      self.udp_host = self.baseurl
       self.send = self.send_udp
+      self.create_db = lambda *x, **y: True
     else:
-      self.baseurl = baseurl
       self.send = self.send_http
+      self.create_db = self.create_db_query
     self.database = database
     self.logctl = logging.getLogger("influxdb_streamer")
     self.db_is_created = False
     self._headers_query = {"Content-type": "application/json", "Accept": "text/plain"}
     self._headers_write = {"Content-type": "application/octet-stream", "Accept": "text/plain"}
 
-  def create_db(self):
+  def create_db_query(self):
     try:
       self.logctl.debug("Creating database: %s" % self.database)
       r = requests.get(self.baseurl + "/query",
@@ -49,6 +55,10 @@ class InfluxDBStreamer():
       self.logctl.error("Error sending data: %s" % e)
       self.db_is_created = False
       return False
+
+  def send_udp(self, line):
+    print("WOULD SEND: %s" % line)
+    print("OVER: %s" % self.baseurl)
 
   def __call__(self, series, tags, fields):
     if not self.db_is_created:
